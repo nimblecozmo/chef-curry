@@ -412,6 +412,51 @@
         ballTrail.push({ x: ball.x, y: ball.y });
         if (ballTrail.length > 30) ballTrail.shift();
 
+        // === BACKBOARD COLLISION ===
+        // The backboard is a vertical rectangle at x=855..867, y=130..310.
+        // Ball (radius 13) comes from the left (Steph) going right (vx>0).
+        // If the ball's segment crosses the backboard's front face, it bounces.
+        const BALL_R = 13;
+        const BB_FRONT_X = 855 + BALL_R;   // ball center hits when its right edge touches backboard
+        const BB_BACK_X  = 867 - BALL_R;   // ball exits back side at this x
+        const BB_TOP_Y   = 130;
+        const BB_BOT_Y   = 310;
+        // Check if ball is moving right AND its segment crosses the backboard face
+        if (ball.vx > 0 && ball.prevX < BB_FRONT_X && ball.x >= BB_FRONT_X) {
+          // Find the y at which the segment crosses x = BB_FRONT_X
+          const t = (BB_FRONT_X - ball.prevX) / (ball.x - ball.prevX);
+          const crossY = ball.prevY + t * (ball.y - ball.prevY);
+          // Only bounce if the crossing point is within the backboard's vertical extent
+          if (crossY >= BB_TOP_Y - BALL_R && crossY <= BB_BOT_Y + BALL_R) {
+            // Bounce! Reverse vx with energy loss (restitution ~0.65)
+            const RESTITUTION = 0.65;
+            ball.vx = -ball.vx * RESTITUTION;
+            // The vertical velocity is affected by where on the backboard it hit
+            // Hitting high (small y) = ball bounces more upward
+            // Hitting low (large y) = ball bounces more downward
+            // Normalize the hit position (0 = top, 1 = bottom)
+            const hitPos = (crossY - BB_TOP_Y) / (BB_BOT_Y - BB_TOP_Y);  // 0..1
+            // The "rim level" is at hitPos = (HOOP_Y - BB_TOP_Y) / (BB_BOT_Y - BB_TOP_Y) = 0.5
+            // If ball hits above the rim, gain some upward velocity
+            // If ball hits below the rim, gain some downward velocity
+            const rimLevel = (HOOP_Y - BB_TOP_Y) / (BB_BOT_Y - BB_TOP_Y);  // 0.5
+            const verticalBoost = (rimLevel - hitPos) * 2;  // -1..+1, positive when hit above rim
+            // Apply a small vertical velocity based on impact position
+            ball.vy += verticalBoost * 1.5;
+            // Some energy loss on the vertical too
+            ball.vy *= 0.85;
+            // Snap ball to the front of the backboard
+            ball.x = BB_FRONT_X;
+            ball.y = crossY;
+            ball.prevX = ball.x;
+            ball.prevY = ball.y;
+            // Visual feedback: backboard flash + sparks at impact
+            spawnSparks(BB_FRONT_X - 5, crossY, '#ffffff');
+          }
+        }
+        // Also check for the LEFT side of backboard (if ball is bouncing back left, it shouldn't re-hit)
+        // The back of the backboard is at x=867. The ball can't hit it from the right since it's blocked by the pole.
+
         // Continuous collision with rim (line vs circle)
         // Ball must be moving down AND its path must actually pass through the rim opening.
         // The rim is 40px radius, ball is 13px radius, so effective opening is 27px.
@@ -472,7 +517,9 @@
       // Segment intersects circle if either root lies in [0, 1]
       return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
     }
-    function spawnSparks(x, y) {
+    function spawnSparks(x, y, color) {
+      const c1 = color || '#FFD700';
+      const c2 = color || '#FF6B1A';
       for (let i = 0; i < 30; i++) {
         const a = Math.random() * Math.PI * 2;
         const sp = 2 + Math.random() * 4;
@@ -481,7 +528,7 @@
           vx: Math.cos(a) * sp,
           vy: Math.sin(a) * sp - 2,
           life: 1,
-          color: Math.random() < 0.5 ? '#FFD700' : '#FF6B1A'
+          color: Math.random() < 0.5 ? c1 : c2
         });
       }
     }
